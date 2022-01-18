@@ -551,6 +551,8 @@ int main(void)
         //accept_request(client_sock); 
         if (pthread_create(&newthread , NULL, (void *)accept_request, (void *)&client_sock) != 0)
             perror("pthread_create");
+
+	pthread_detach(newthread);
     }
 
     close(server_sock);
