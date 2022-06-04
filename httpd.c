@@ -135,9 +135,14 @@ void accept_request(void *arg)
                 (st.st_mode & S_IXOTH)    )
             cgi = 1;
         if (!cgi)
+	{
             serve_file(client, path);
-        else
+	}
+	else
+	{
+	    printf("run cgi %s\n", path);
             execute_cgi(client, path, method, query_string);
+	}
     }
 
     close(client);
@@ -244,12 +249,14 @@ void execute_cgi(int client, const char *path,
     int numchars = 1;
     int content_length = -1;
 
+    printf("in execute cgi %s \n", query_string);
     buf[0] = 'A'; buf[1] = '\0';
     if (strcasecmp(method, "GET") == 0)
         while ((numchars > 0) && strcmp("\n", buf))  /* read & discard headers */
             numchars = get_line(client, buf, sizeof(buf));
     else if (strcasecmp(method, "POST") == 0) /*POST*/
     {
+	printf("hello query string %s\n", query_string);
         numchars = get_line(client, buf, sizeof(buf));
         while ((numchars > 0) && strcmp("\n", buf))
         {
@@ -259,6 +266,7 @@ void execute_cgi(int client, const char *path,
             numchars = get_line(client, buf, sizeof(buf));
         }
         if (content_length == -1) {
+	    printf("bad request\n");
             bad_request(client);
             return;
         }
@@ -281,8 +289,6 @@ void execute_cgi(int client, const char *path,
         cannot_execute(client);
         return;
     }
-    sprintf(buf, "HTTP/1.0 200 OK\r\n");
-    send(client, buf, strlen(buf), 0);
     if (pid == 0)  /* child: CGI script */
     {
         char meth_env[255];
@@ -306,6 +312,8 @@ void execute_cgi(int client, const char *path,
         execl(path, NULL);
         exit(0);
     } else {    /* parent */
+	int content_length = 0;
+	char content[4096] = {0};
         close(cgi_output[1]);
         close(cgi_input[0]);
         if (strcasecmp(method, "POST") == 0)
@@ -314,11 +322,18 @@ void execute_cgi(int client, const char *path,
                 write(cgi_input[1], &c, 1);
             }
         while (read(cgi_output[0], &c, 1) > 0)
-            send(client, &c, 1, 0);
+	{
+	    content[content_length++] = c;
+            //send(client, &c, 1, 0);
+	}
 
         close(cgi_output[0]);
         close(cgi_input[1]);
         waitpid(pid, &status, 0);
+
+    	sprintf(buf, "HTTP/1.0 200 OK\r\nContent-Length:%d\r\nConnection: close\r\n\r\n", strlen(content));
+    	send(client, buf, strlen(buf), 0);
+	send(client, content, strlen(content), 0);
     }
 }
 
