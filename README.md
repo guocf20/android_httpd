@@ -1,3 +1,8 @@
+编译
+make
+启动
+./httpd
+
 A mirror for tinyhttpd(Tinyhttpd非官方镜像,Fork自[sourceForge](https://sourceforge.net/projects/tiny-httpd/),仅供学习)
 
 ### Prepare 
