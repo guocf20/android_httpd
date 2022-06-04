@@ -387,6 +387,12 @@ void headers(int client, const char *filename)
 	    log_info(logger, "this is pic\n");
 	    sprintf(buf, "Content-Type: image/jpeg\r\n");
     }
+    else if (strstr(filename, ".zip") != NULL || strstr(filename, ".tar") || strstr(filename, "*.gz") != NULL)
+    {
+
+	    log_info(logger, "this is pic\n");
+	    sprintf(buf, "Content-Type: application/octet-stream\r\n");
+    }
     else
     {
 	    log_info(logger, "this is text\n");
