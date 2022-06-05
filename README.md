@@ -1,7 +1,17 @@
+跨平台编译请参考makefile中的CC 等
 编译
-make
+make   
 启动
 ./httpd
+
+
+
+lua支持
+cd ./third/lua/
+make
+
+
+
 
 A mirror for tinyhttpd(Tinyhttpd非官方镜像,Fork自[sourceForge](https://sourceforge.net/projects/tiny-httpd/),仅供学习)
 
