@@ -1,6 +1,4 @@
 loadfile("socket.lua")()
 local socket = require('socket')
-print(socket)
 local server = socket.bind('*',12345)
-print(server)
 local client = server:accept()
