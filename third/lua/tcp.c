@@ -240,9 +240,7 @@ static int meth_accept(lua_State *L)
 * Binds an object to an address
 \*-------------------------------------------------------------------------*/
 static int meth_bind(lua_State *L) {
-	printf("in bind\n");
     p_tcp tcp = (p_tcp) auxiliar_checkclass(L, "tcp{master}", 1);
-    printf("auxi\n");
     const char *address =  luaL_checkstring(L, 2);
     const char *port = luaL_checkstring(L, 3);
     const char *err;
