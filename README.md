@@ -11,6 +11,10 @@ cd ./third/lua/
 make
 
 
+测试：
+1)安装后, 访问http://ip:4000/
+2)http://ip:4000/qbs.mp4  测试视频
+3)http://ip:4000/qbs.webm 测试音频
 
 
 A mirror for tinyhttpd(Tinyhttpd非官方镜像,Fork自[sourceForge](https://sourceforge.net/projects/tiny-httpd/),仅供学习)

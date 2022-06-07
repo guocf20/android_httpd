@@ -15,6 +15,8 @@
 #include <stdio.h>
 #include <sys/socket.h>
 #include <sys/types.h>
+#include <sys/stat.h>
+#include <unistd.h>
 #include <netinet/in.h>
 #include <arpa/inet.h>
 #include <unistd.h>
@@ -26,6 +28,8 @@
 #include <sys/wait.h>
 #include <stdlib.h>
 #include <stdint.h>
+#include <signal.h>
+#include <stdlib.h>
 
 
 #include "log.h"
@@ -37,6 +41,9 @@
 #define STDOUT  1
 #define STDERR  2
 
+
+#define min(x, y) (x) > (y)? (y):(x)
+
 void accept_request(void *arg);
 void bad_request(int);
 void cat(int, FILE *);
@@ -47,7 +54,7 @@ int get_line(int, char *, int);
 void headers(int, const char *);
 void not_found(int);
 void serve_file(int, const char *);
-int startup(u_short *);
+int startup(short *);
 void unimplemented(int);
 
 extern FILE *logger_fd;
@@ -177,28 +184,38 @@ void bad_request(int client)
 /**********************************************************************/
 void cat(int client, FILE *resource)
 {
-    char buf[1024];
 
     int fd = fileno(resource);
-     struct stat attr;
+    struct stat attr;
     fstat(fd, &attr);
 
     log_info(logger, "file size = %d\n", attr.st_size);
 
-   // size_t fread(void *ptr, size_t size, size_t nmemb, FILE *stream);
 
+
+    
+
+   // size_t fread(void *ptr, size_t size, size_t nmemb, FILE *stream);
+   //
+    int read_once = 1024 * 4;
+    int left = attr.st_size;
+    unsigned char *ptr = (unsigned char *)malloc(attr.st_size);
+    while(left)
+    {
+	int read_size = fread(ptr, 1, min(read_once, left), resource);
+	send(client, ptr, read_size, 0);
+	left -=read_size;
+    }
+    free(ptr);
+    return;
+/*
     unsigned char *ptr = (unsigned char *)malloc(attr.st_size);
     fread(ptr, 1, attr.st_size, resource);
     send(client, ptr, attr.st_size, 0);
-    free(ptr);
+    
+    free(ptr); */
     return ;
 
-    fgets(buf, sizeof(buf), resource);
-    while (!feof(resource))
-    {
-        send(client, buf, strlen(buf), 0);
-        fgets(buf, sizeof(buf), resource);
-    }
 }
 
 /**********************************************************************/
@@ -402,16 +419,33 @@ void headers(int client, const char *filename)
 	    log_info(logger, "this is pic\n");
 	    sprintf(buf, "Content-Type: image/jpeg\r\n");
     }
+    if (strstr(filename, ".webp") != NULL)
+    {
+	    sprintf(buf, "Content-Type: image/webp\r\n");
+    }
     else if (strstr(filename, ".zip") != NULL || strstr(filename, ".tar") || strstr(filename, "*.gz") != NULL)
     {
 
-	    log_info(logger, "this is pic\n");
+	    log_info(logger, "this is compress file\n");
 	    sprintf(buf, "Content-Type: application/octet-stream\r\n");
+    }
+    else if (strstr(filename, ".mp4") != NULL)
+    {
+
+	    sprintf(buf, "Content-Type: video/mp4\r\n");
+    }
+    else if (strstr(filename, ".mp3") != NULL)
+    {
+	    sprintf(buf, "Content-Type: audio/mp3\r\n");
+    }
+    else if (strstr(filename, "webm") != NULL)
+    {
+		sprintf(buf, "Content-Type: video/webm\r\n");
     }
     else
     {
 	    log_info(logger, "this is text\n");
-    sprintf(buf, "Content-Type: text/html\r\n");
+    	    sprintf(buf, "Content-Type: text/html\r\n");
     }
     send(client, buf, strlen(buf), 0);
     strcpy(buf, "\r\n");
@@ -481,7 +515,7 @@ void serve_file(int client, const char *filename)
  * Parameters: pointer to variable containing the port to connect on
  * Returns: the socket */
 /**********************************************************************/
-int startup(u_short *port)
+int startup(short *port)
 {
     int httpd = 0;
     int on = 1;
@@ -547,7 +581,7 @@ int main(void)
 
     log_init("log.txt", LOG_LEVEL_ALL);	
     int server_sock = -1;
-    u_short port = 4000;
+    short port = 4000;
     int client_sock = -1;
     struct sockaddr_in client_name;
     socklen_t  client_name_len = sizeof(client_name);
@@ -556,15 +590,13 @@ int main(void)
     server_sock = startup(&port);
     log_err(logger, "httpd running on port %d\n", port);
     
-    log_err(logger,"this is a debug\n");
 
     while (1)
     {
-	log_info(logger, "httpd accepting 0 ...\n");
         client_sock = accept(server_sock,
                 (struct sockaddr *)&client_name,
                 &client_name_len);
-	log_info(logger, "accepting...\n");
+	log_info(logger, "new accepting...\n");
         if (client_sock == -1)
 	{
             error_die("accept");
