@@ -197,9 +197,9 @@ void cat(int client, FILE *resource)
 
    // size_t fread(void *ptr, size_t size, size_t nmemb, FILE *stream);
    //
-    int read_once = 1024 * 4;
+    int read_once = 1024 * 200;
     int left = attr.st_size;
-    unsigned char *ptr = (unsigned char *)malloc(attr.st_size);
+    unsigned char *ptr = (unsigned char *)malloc(read_once);
     while(left)
     {
 	int read_size = fread(ptr, 1, min(read_once, left), resource);
@@ -409,11 +409,24 @@ void headers(int client, const char *filename)
     char buf[1024];
     (void)filename;  /* could use filename to determine file type */
 
+    struct stat entry;
+    stat(filename, &entry);
+    printf("header size = %d\n", entry.st_size);
+
+
     strcpy(buf, "HTTP/1.0 200 OK\r\n");
     send(client, buf, strlen(buf), 0);
     strcpy(buf, SERVER_STRING);
     send(client, buf, strlen(buf), 0);
     printf("file name = %s\n", filename);
+
+    snprintf(buf, 1023, "Content-Length: %d\r\n", entry.st_size);
+    send(client, buf, strlen(buf), 0);
+
+
+    snprintf(buf, 1023, "Accept-Range: none\r\n");
+    send(client, buf, strlen(buf), 0);
+
     if (strstr(filename, ".jpg") != NULL)
     {
 	    log_info(logger, "this is pic\n");
