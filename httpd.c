@@ -34,7 +34,6 @@
 
 #include "log.h"
 
-#define ISspace(x) isspace((int)(x))
 
 #define SERVER_STRING "Server: jdbhttpd/0.1.0\r\n"
 #define STDIN   0
@@ -59,6 +58,83 @@ void unimplemented(int);
 
 extern FILE *logger_fd;
 extern int logger;
+
+
+
+typedef struct http_header_
+{
+	char *method;
+	char *path;
+	char *query;
+}http_header;
+
+
+int  parse(const char* line, http_header *entry)
+{
+
+
+
+        if (line == NULL)
+        {
+                return 1;
+        }
+        const char *ptr = strchr(line, ' ');
+        if (ptr == NULL)
+        {
+                return 1;
+        }
+
+        const char *start_of_path = ptr + 1;
+
+        entry->method = strndup(line, start_of_path - line + 1);
+        entry->method[start_of_path - line - 1] = '\0';
+//no query string;
+        ptr = strchr(start_of_path, '?');
+
+        if (ptr == NULL)
+        {
+                const char *start_of_query = strchr(start_of_path, ' ') + 1;
+                entry->path = strndup(start_of_path, start_of_query - start_of_path + 1);
+                entry->path[start_of_query - start_of_path - 1] = '\0';
+
+                return 0;
+        }
+
+        const char *start_of_query = ptr + 1;
+        entry->path = strndup(start_of_path, start_of_query - start_of_path + 1);
+        entry->path[start_of_query - start_of_path - 1] = '\0';
+
+        ptr = strchr(start_of_query, ' ');
+        if (ptr == NULL)
+        {
+                return 1;
+        }
+
+        const char *end_of_query = ptr + 1;
+        entry->query = strndup(start_of_query, end_of_query - start_of_query + 1);
+        entry->query[end_of_query - start_of_query -1 ] = '\0';
+
+        return 0;
+}
+
+
+int dump(http_header h)
+{
+        if (h.method)
+        {
+                printf("%s\n", h.method);
+        }
+        if (h.path)
+        {
+                printf("%s*\n", h.path);
+        }
+        if (h.query)
+        {
+                printf("%s\n", h.query);
+        }
+}
+
+
 /**********************************************************************/
 /* A request has caused a call to accept() on the server port to
  * return.  Process the request appropriately.
@@ -82,52 +158,27 @@ void accept_request(void *arg)
 
     log_info(logger,"in acept request\n");
 
+    http_header header;
+
+
     numchars = get_line(client, buf, sizeof(buf));
-    i = 0; j = 0;
-    while (!ISspace(buf[i]) && (i < sizeof(method) - 1))
+    memset(&header, '\0', sizeof(header));
+    parse(buf, &header);
+    dump(header);
+    sprintf(method, "%s", header.method);
+    sprintf(url, "%s", header.path);
+    if (header.query)
     {
-        method[i] = buf[i];
-        i++;
-    }
-    j=i;
-    method[i] = '\0';
-
-    if (strcasecmp(method, "GET") && strcasecmp(method, "POST"))
-    {
-        unimplemented(client);
-	close(client);
-        return;
+	cgi = 1;
     }
 
-    if (strcasecmp(method, "POST") == 0)
-        cgi = 1;
-
-    i = 0;
-    while (ISspace(buf[j]) && (j < numchars))
-        j++;
-    while (!ISspace(buf[j]) && (i < sizeof(url) - 1) && (j < numchars))
-    {
-        url[i] = buf[j];
-        i++; j++;
-    }
-    url[i] = '\0';
-
-    if (strcasecmp(method, "GET") == 0)
-    {
-        query_string = url;
-        while ((*query_string != '?') && (*query_string != '\0'))
-            query_string++;
-        if (*query_string == '?')
-        {
-            cgi = 1;
-            *query_string = '\0';
-            query_string++;
-        }
-    }
 
     sprintf(path, "htdocs%s", url);
     if (path[strlen(path) - 1] == '/')
         strcat(path, "index.html");
+
+    printf("%s\n", path);
+
     if (stat(path, &st) == -1) {
         while ((numchars > 0) && strcmp("\n", buf))  /* read & discard headers */
             numchars = get_line(client, buf, sizeof(buf));
@@ -148,7 +199,7 @@ void accept_request(void *arg)
 	else
 	{
 	    printf("run cgi %s\n", path);
-            execute_cgi(client, path, method, query_string);
+            execute_cgi(client, path, method, header.query);
 	}
     }
 
