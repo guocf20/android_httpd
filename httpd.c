@@ -118,7 +118,7 @@ int  parse(const char* line, http_header *entry)
 }
 
 
-int dump(http_header h)
+void dump(http_header h)
 {
         if (h.method)
         {
@@ -131,6 +131,27 @@ int dump(http_header h)
         if (h.query)
         {
                 printf("%s\n", h.query);
+        }
+
+}
+
+void free_header(http_header *h)
+{
+
+        if (h->method)
+        {
+                free(h->method);
+		h->method = NULL;
+        }
+        if (h->path)
+        {
+                free(h->path);
+		h->path = NULL;
+        }
+        if (h->query)
+        {
+               free(h->query);
+	       h->query = NULL;
         }
 }
 
@@ -150,11 +171,9 @@ void accept_request(void *arg)
     char method[255];
     char url[255];
     char path[512];
-    size_t i, j;
     struct stat st;
     int cgi = 0;      /* becomes true if server decides this is a CGI
                        * program */
-    char *query_string = NULL;
 
     log_info(logger,"in acept request\n");
 
@@ -202,7 +221,7 @@ void accept_request(void *arg)
             execute_cgi(client, path, method, header.query);
 	}
     }
-
+    
     close(client);
 }
 
