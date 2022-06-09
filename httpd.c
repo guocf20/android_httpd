@@ -221,7 +221,7 @@ void accept_request(void *arg)
             execute_cgi(client, path, method, header.query);
 	}
     }
-    
+    free_header(&header);
     close(client);
 }
 
