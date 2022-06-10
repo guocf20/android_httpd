@@ -44,10 +44,11 @@ function attrdir (path)
     end
 end
 
-print("<html><head><title>Index of /lua_src</title></head><body><h1>Index of /lua_src</h1>")
+header=string.format("<html><head><title>Index of %s</title></head><body><h1>Index of %s</h1>", string.sub(arg[1], 7), string.sub(arg[1], 7))
+print(header)
 print(" <table>")
 tmp  = dirname(arg[1])
-entry =string.format("<tr><td valign=\"top\"><img src=\"/icons/folder.gif\" alt=\"[   ]\"></td><td><a href=\"%s\">%s</a></td></tr>", string.sub(tmp, 7), tmp)
+entry =string.format("<tr><td valign=\"top\"><img src=\"/icons/back.gif\" alt=\"[   ]\"></td><td><a href=\"%s\">%s</a></td></tr>", string.sub(tmp, 7), "Parent Directory")
 print(entry)
 attrdir (arg[1])
 print(" </table>")

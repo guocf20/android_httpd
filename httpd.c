@@ -191,7 +191,7 @@ void accept_request(void *arg)
 
 
     sprintf(path, "htdocs%s", url);
-    if (path[strlen(path) - 1] == '/')
+    if (path[strlen(path) - 1] == '/' && strlen(url) == 1)
         strcat(path, "index.html");
 
     printf("%s\n", path);
