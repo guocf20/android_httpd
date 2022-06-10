@@ -194,6 +194,11 @@ void accept_request(void *arg)
     if (path[strlen(path) - 1] == '/' && strlen(url) == 1)
         strcat(path, "index.html");
 
+    if (path[strlen(path) - 1] == '/')
+    {
+	    path[strlen(path) - 1] = '\0';
+    }
+
     printf("%s\n", path);
 
     if (stat(path, &st) == -1) {
