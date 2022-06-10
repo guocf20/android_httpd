@@ -72,8 +72,6 @@ typedef struct http_header_
 int  parse(const char* line, http_header *entry)
 {
 
-
-
         if (line == NULL)
         {
                 return 1;
@@ -206,7 +204,9 @@ void accept_request(void *arg)
     else
     {
         if ((st.st_mode & S_IFMT) == S_IFDIR)
-            strcat(path, "/index.html");
+	{
+         //   strcat(path, "/index.html");
+	}
         if ((st.st_mode & S_IXUSR) ||
                 (st.st_mode & S_IXGRP) ||
                 (st.st_mode & S_IXOTH)    )
@@ -336,7 +336,7 @@ void execute_cgi(int client, const char *path,
     int numchars = 1;
     int content_length = -1;
 
-    printf("in execute cgi %s \n", query_string);
+    printf("in execute cgi %s %s\n", path, query_string);
     buf[0] = 'A'; buf[1] = '\0';
     if (strcasecmp(method, "GET") == 0)
         while ((numchars > 0) && strcmp("\n", buf))  /* read & discard headers */
@@ -396,7 +396,16 @@ void execute_cgi(int client, const char *path,
             sprintf(length_env, "CONTENT_LENGTH=%d", content_length);
             putenv(length_env);
         }
-        execl(path, NULL);
+	struct stat st;
+	stat(path, &st);
+	if ((st.st_mode & S_IFMT) == S_IFDIR)
+	{
+		execlp("./htdocs/ls.lua", "./htdocs/ls.lua",path, NULL);
+	}
+	else
+	{
+        	execl(path, NULL);
+	}
         exit(0);
     } else {    /* parent */
 	int content_length = 0;
@@ -497,12 +506,13 @@ void headers(int client, const char *filename)
     snprintf(buf, 1023, "Accept-Range: none\r\n");
     send(client, buf, strlen(buf), 0);
 
+    printf("filename = %s\n", filename);
     if (strstr(filename, ".jpg") != NULL)
     {
 	    log_info(logger, "this is pic\n");
 	    sprintf(buf, "Content-Type: image/jpeg\r\n");
     }
-    if (strstr(filename, ".webp") != NULL)
+    else if (strstr(filename, ".webp") != NULL)
     {
 	    sprintf(buf, "Content-Type: image/webp\r\n");
     }
