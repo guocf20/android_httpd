@@ -675,6 +675,7 @@ void unimplemented(int client)
 
 int main(void)
 {
+    daemon(1, 0);
     signal(SIGPIPE, SIG_IGN);
 
     log_init("log.txt", LOG_LEVEL_ALL);	
