@@ -41,7 +41,7 @@ void bad_request(int);
 void cat(int, FILE *);
 void cannot_execute(int);
 void error_die(const char *);
-void execute_cgi(int, const char *, const char *, const char *);
+void execute_cgi(int, const char *, const char *, const char *, int conent_left);
 int get_line(int, char *, int);
 void headers(int, const char *);
 void not_found(int);
@@ -60,10 +60,11 @@ typedef struct http_header_
 	char *method;
 	char *path;
 	char *query;
+	int content_len;
 }http_header;
 
 
-int  parse_header(const char* line, int line_len, http_header *entry)
+int  parse_header(const char* line, int line_len, http_header *entry, int *header_len, int *body_len)
 {
 	const char *ptr = line;
 	const char *key_value_ptr = NULL;
@@ -122,6 +123,11 @@ parse_left:
 			if (strlen(str)  > 2)
 			{
 			printf("str key value = %s\n", str);
+			if (strcasestr(str, "Content-Length") != NULL)
+			{
+				printf( "this i content leng = %d\n", atoi(&str[strlen("Content-Length") + 1]));
+				entry->content_len = atoi(&str[strlen("Content-Length") + 1]);
+			}
 			}
 			ptr = key_value_ptr + 2;
 		}
@@ -131,7 +137,9 @@ parse_left:
 		}
 		
 	}
-	printf("body in header left %d  total =%d  parsed = %d\n", line_len - (ptr-line), line_len, ptr-line);
+	printf("body in header left %d  total =%d  header_len = %d\n", line_len - (ptr-line), line_len, ptr-line);
+	*header_len = ptr-line;
+	*body_len = line_len - (ptr-line);
         return 0;
 }
 
@@ -193,6 +201,8 @@ void accept_request(void *arg)
     int cgi = 0;      /* becomes true if server decides this is a CGI
                        * program */
 
+    int body_len;
+    int header_len;
 
     log_info(logger,"in acept request\n");
 
@@ -204,7 +214,7 @@ void accept_request(void *arg)
 
     //numchars = get_line(client, buf, sizeof(buf));
     memset(&header, '\0', sizeof(header));
-    parse_header(http_head, read_total, &header);
+    parse_header(http_head, read_total, &header,&header_len, &body_len);
     dump_header(header);
     sprintf(method, "%s", header.method);
     sprintf(url, "%s", header.path);
@@ -247,7 +257,8 @@ void accept_request(void *arg)
 	else
 	{
 	    printf("run cgi %s\n", path);
-            execute_cgi(client, path, method, header.query);
+	    int content_left = header.content_len - body_len;
+            execute_cgi(client, path, method, header.query, content_left);
 	}
     }
     free_header(&header);
@@ -353,7 +364,7 @@ void error_die(const char *sc)
  *             path to the CGI script */
 /**********************************************************************/
 void execute_cgi(int client, const char *path,
-        const char *method, const char *query_string)
+        const char *method, const char *query_string, int content_left)
 {
     char buf[1024];
     int cgi_output[2];
@@ -374,20 +385,24 @@ void execute_cgi(int client, const char *path,
     }
     else if (strcasecmp(method, "POST") == 0) /*POST*/
     {
-	printf("hello query string %s\n", query_string);
-        numchars = get_line(client, buf, sizeof(buf));
-        while ((numchars > 0) && strcmp("\n", buf))
-        {
-            buf[15] = '\0';
-            if (strcasecmp(buf, "Content-Length:") == 0)
-                content_length = atoi(&(buf[16]));
-            numchars = get_line(client, buf, sizeof(buf));
-        }
-        if (content_length == -1) {
-	    printf("bad request\n");
-            bad_request(client);
-            return;
-        }
+	if (content_left != 0)
+	{
+	
+		printf("hello query string %s\n", query_string);
+		numchars = get_line(client, buf, sizeof(buf));
+		while ((numchars > 0) && strcmp("\n", buf))
+		{
+			buf[15] = '\0';
+			if (strcasecmp(buf, "Content-Length:") == 0)
+				content_length = atoi(&(buf[16]));
+			numchars = get_line(client, buf, sizeof(buf));
+		}
+		if (content_length == -1) {
+			printf("bad request\n");
+			bad_request(client);
+			return;
+		}
+	}
     }
     else/*HEAD or other*/
     {
