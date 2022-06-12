@@ -4,14 +4,6 @@
  * CSE 4344 (Network concepts), Prof. Zeigler
  * University of Texas at Arlington
  */
-/* This program compiles for Sparc Solaris 2.6.
- * To compile for Linux:
- *  1) Comment out the #include <pthread.h> line.
- *  2) Comment out the line that defines the variable newthread.
- *  3) Comment out the two lines that run pthread_create().
- *  4) Uncomment the line that runs accept_request().
- *  5) Remove -lsocket from the Makefile.
- */
 #include <stdio.h>
 #include <sys/socket.h>
 #include <sys/types.h>
@@ -30,11 +22,12 @@
 #include <stdint.h>
 #include <signal.h>
 #include <stdlib.h>
-
+#include<sys/epoll.h>
 
 #include "log.h"
 
 
+#define MAX_CLIENTS 1024
 #define SERVER_STRING "Server: jdbhttpd/0.1.0\r\n"
 #define STDIN   0
 #define STDOUT  1
@@ -63,20 +56,22 @@ extern int logger;
 
 typedef struct http_header_
 {
+	char *origin;
 	char *method;
 	char *path;
 	char *query;
 }http_header;
 
 
-int  parse(const char* line, http_header *entry)
+int  parse_header(const char* line, int line_len, http_header *entry)
 {
-
+	const char *ptr = line;
+	const char *key_value_ptr = NULL;
         if (line == NULL)
         {
                 return 1;
         }
-        const char *ptr = strchr(line, ' ');
+        ptr = strchr(line, ' ');
         if (ptr == NULL)
         {
                 return 1;
@@ -94,8 +89,7 @@ int  parse(const char* line, http_header *entry)
                 const char *start_of_query = strchr(start_of_path, ' ') + 1;
                 entry->path = strndup(start_of_path, start_of_query - start_of_path + 1);
                 entry->path[start_of_query - start_of_path - 1] = '\0';
-
-                return 0;
+		goto parse_left;
         }
 
         const char *start_of_query = ptr + 1;
@@ -111,12 +105,38 @@ int  parse(const char* line, http_header *entry)
         const char *end_of_query = ptr + 1;
         entry->query = strndup(start_of_query, end_of_query - start_of_query + 1);
         entry->query[end_of_query - start_of_query -1 ] = '\0';
+	
 
+parse_left:
+	 
+	 ptr = line;
+         key_value_ptr = line;
+
+ 	while(key_value_ptr != NULL)
+	{
+		key_value_ptr = strstr(ptr, "\r\n");
+		if (key_value_ptr && (ptr-line) < line_len)
+		{
+			char *str = strndup(ptr, key_value_ptr - ptr +1);
+			str[key_value_ptr - ptr ] = '\0';
+			if (strlen(str)  > 2)
+			{
+			printf("str key value = %s\n", str);
+			}
+			ptr = key_value_ptr + 2;
+		}
+		else
+		{
+			break;
+		}
+		
+	}
+	printf("body in header left %d  total =%d  parsed = %d\n", line_len - (ptr-line), line_len, ptr-line);
         return 0;
 }
 
 
-void dump(http_header h)
+void dump_header(http_header h)
 {
         if (h.method)
         {
@@ -165,23 +185,27 @@ void accept_request(void *arg)
 
     int client = *int_ptr;
     char buf[1024];
-    size_t numchars;
-    char method[255];
+    size_t numchars = 0; 
+    char method[255] = {0};
     char url[255];
     char path[512];
     struct stat st;
     int cgi = 0;      /* becomes true if server decides this is a CGI
                        * program */
 
+
     log_info(logger,"in acept request\n");
 
     http_header header;
 
+    char http_head[4096];
+    int read_total = read_http_header(client, http_head, 4096);
+    printf("%s\n", http_head);
 
-    numchars = get_line(client, buf, sizeof(buf));
+    //numchars = get_line(client, buf, sizeof(buf));
     memset(&header, '\0', sizeof(header));
-    parse(buf, &header);
-    dump(header);
+    parse_header(http_head, read_total, &header);
+    dump_header(header);
     sprintf(method, "%s", header.method);
     sprintf(url, "%s", header.path);
     if (header.query)
@@ -199,11 +223,10 @@ void accept_request(void *arg)
 	    path[strlen(path) - 1] = '\0';
     }
 
-    printf("%s\n", path);
+    printf("path =%s\n", path);
 
-    if (stat(path, &st) == -1) {
-        while ((numchars > 0) && strcmp("\n", buf))  /* read & discard headers */
-            numchars = get_line(client, buf, sizeof(buf));
+    if (stat(path, &st) == -1) 
+    {
         not_found(client);
     }
     else
@@ -218,6 +241,7 @@ void accept_request(void *arg)
             cgi = 1;
         if (!cgi)
 	{
+		printf("in serve\n");
             serve_file(client, path);
 	}
 	else
@@ -342,10 +366,12 @@ void execute_cgi(int client, const char *path,
     int content_length = -1;
 
     printf("in execute cgi %s %s\n", path, query_string);
+    
     buf[0] = 'A'; buf[1] = '\0';
     if (strcasecmp(method, "GET") == 0)
-        while ((numchars > 0) && strcmp("\n", buf))  /* read & discard headers */
-            numchars = get_line(client, buf, sizeof(buf));
+    {
+	    printf("execute_cgi get method\n");
+    }
     else if (strcasecmp(method, "POST") == 0) /*POST*/
     {
 	printf("hello query string %s\n", query_string);
@@ -436,6 +462,35 @@ void execute_cgi(int client, const char *path,
     	send(client, buf, strlen(buf), 0);
 	send(client, content, strlen(content), 0);
     }
+}
+
+
+
+int read_http_header(int sock, char *buf, int buf_size)
+{
+	//avoid \r\n\r\n
+	char *ptr = buf ;
+	int size = 0;
+	int http_header_end = 0;
+	int total_read = 0;
+	read(sock, ptr, 4);
+	total_read +=4;
+	ptr+=4;
+
+	while ( (size = read(sock, ptr, 1024) ) > 0 && (ptr-buf) < buf_size  )
+	{
+		total_read +=size;
+		if (strstr( (ptr), "\r\n\r\n")!= NULL)
+		{
+
+			break;
+		}
+		else
+		{
+			ptr+=size;
+		}
+	}
+	return total_read;
 }
 
 /**********************************************************************/
@@ -587,13 +642,15 @@ void not_found(int client)
 void serve_file(int client, const char *filename)
 {
     FILE *resource = NULL;
+    /*
     int numchars = 1;
     char buf[1024];
 
     buf[0] = 'A'; buf[1] = '\0';
-    while ((numchars > 0) && strcmp("\n", buf))  /* read & discard headers */
-        numchars = get_line(client, buf, sizeof(buf));
 
+    while ((numchars > 0) && strcmp("\n", buf)) 
+        numchars = get_line(client, buf, sizeof(buf));
+*/
     resource = fopen(filename, "r");
     if (resource == NULL)
         not_found(client);
@@ -604,6 +661,40 @@ void serve_file(int client, const char *filename)
     }
     fclose(resource);
 }
+
+/*
+int init_server(char *ip, short port)
+{
+	int server = 0;
+	int enable = 1;
+	server = socket(AF_INET, SOCK_STREAM, 0);
+
+	struct sockaddr_in addr;
+	addr.sin_family = AF_INET;
+	addr.sin_port = hton(port);
+	addr.sin_addr.s_addr = htonl(INADDR_ANY);
+
+    	if ((setsockopt(server, SOL_SOCKET, SO_REUSEADDR, &enable, sizeof(enable))) < 0)  
+    	{  
+        	error_die("setsockopt failed");
+    	}
+    	if (bind(server, (struct sockaddr *)&addr, sizeof(addr)) < 0)
+	{
+		error_dir("bind failed");
+	}
+	if (listen(server, MAX_CLIENTS) < 0)
+	{
+		error_dir("listen bind");
+	}
+
+	int epfd = epoll_create(MAX_CLIENTS);
+	
+	struct epoll_event event;
+	event.data.fd = server;
+
+	return server;
+}
+*/
 
 /**********************************************************************/
 /* This function starts the process of listening for web connections
@@ -671,11 +762,12 @@ void unimplemented(int client)
     send(client, buf, strlen(buf), 0);
 }
 
+
 /**********************************************************************/
 
 int main(void)
 {
-    daemon(1, 0);
+ //   daemon(1, 0);
     signal(SIGPIPE, SIG_IGN);
 
     log_init("log.txt", LOG_LEVEL_ALL);	
