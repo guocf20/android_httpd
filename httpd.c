@@ -78,6 +78,7 @@ int  parse_header(const char* line, int line_len, http_header *entry, int *heade
 {
 	const char *ptr = line;
 	const char *key_value_ptr = NULL;
+	const char *header_end = NULL;
         if (line == NULL)
         {
                 return 1;
@@ -122,24 +123,31 @@ parse_left:
 	 
 	 ptr = line;
          key_value_ptr = line;
-
  	while(key_value_ptr != NULL)
 	{
 		key_value_ptr = strstr(ptr, "\r\n");
 		if (key_value_ptr && (ptr-line) < line_len)
 		{
+
 			char *str = strndup(ptr, key_value_ptr - ptr +1);
 			str[key_value_ptr - ptr ] = '\0';
 			if (strlen(str)  > 2)
 			{
-			printf("str key value = %s\n", str);
-			if (strcasestr(str, "Content-Length") != NULL)
-			{
-				printf( "this i content leng = %d\n", atoi(&str[strlen("Content-Length") + 1]));
-				entry->content_len = atoi(&str[strlen("Content-Length") + 1]);
-			}
+				printf("str key value = %s\n", str);
+				if (strcasestr(str, "Content-Length") != NULL)
+				{
+					printf( "this i content leng = %d\n", atoi(&str[strlen("Content-Length") + 1]));
+					entry->content_len = atoi(&str[strlen("Content-Length") + 1]);
+				}
 			}
 			ptr = key_value_ptr + 2;
+			printf("%x %x\n", *(ptr+0), *(ptr+1));
+			if (*(ptr+0) == '\r' && *(ptr+1) == '\n')
+			{
+				printf("this is end\n");
+				ptr+=2;
+				break;
+			}
 		}
 		else
 		{
@@ -233,7 +241,7 @@ void accept_request(void *arg)
     dump_header(header);
     sprintf(method, "%s", header.method);
     sprintf(url, "%s", header.path);
-    if (header.query)
+    if (header.query || strcmp(header.method,"POST") == 0)
     {
 	cgi = 1;
     }
@@ -390,7 +398,7 @@ void execute_cgi(int client, const char *path, const char *method, const char *q
     int numchars = 1;
     int content_length = -1;
 
-    printf("in execute cgi %s %s %s %d\n", path, query_string, body.data, body.body_len);
+    printf("in execute cgi %s %s  %d %d\n", path, query_string,  body.body_len, content_left);
     
     buf[0] = 'A'; buf[1] = '\0';
     if (strcasecmp(method, "GET") == 0)
@@ -402,6 +410,22 @@ void execute_cgi(int client, const char *path, const char *method, const char *q
 	if (content_left != 0)
 	{
 	}
+
+	int len = 0;
+	uint8_t tmpbuf[1024]={0};
+	while (content_left > 0)
+	{
+		len = read(client, tmpbuf, 1024);
+		if (len == 0 )
+		{
+			printf("read len = 0\n");
+			break;
+		}
+		content_left-=len;
+		printf("read = %d left = %d\n", len, content_left);
+	}
+    	sprintf(buf, "HTTP/1.0 200 OK\r\nContent-Length:0\r\nConnection: close\r\n\r\n");
+    	send(client, buf, strlen(buf), 0);
 
 
     }
