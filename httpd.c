@@ -4,6 +4,7 @@
  * CSE 4344 (Network concepts), Prof. Zeigler
  * University of Texas at Arlington
  */
+
 #include <stdio.h>
 #include <sys/socket.h>
 #include <sys/types.h>
@@ -36,12 +37,19 @@
 
 #define min(x, y) (x) > (y)? (y):(x)
 
+typedef struct http_body_
+{
+	uint8_t data[4096];
+	int body_len;
+	int body_writed;
+	int body_offset;
+}http_body;
 void accept_request(void *arg);
 void bad_request(int);
 void cat(int, FILE *);
 void cannot_execute(int);
 void error_die(const char *);
-void execute_cgi(int, const char *, const char *, const char *, int conent_left);
+void execute_cgi(int, const char *, const char *, const char *, http_body body, int conent_left);
 int get_line(int, char *, int);
 void headers(int, const char *);
 void not_found(int);
@@ -62,6 +70,8 @@ typedef struct http_header_
 	char *query;
 	int content_len;
 }http_header;
+
+
 
 
 int  parse_header(const char* line, int line_len, http_header *entry, int *header_len, int *body_len)
@@ -207,14 +217,19 @@ void accept_request(void *arg)
     log_info(logger,"in acept request\n");
 
     http_header header;
+    http_body body;
 
-    char http_head[4096];
+    char http_head[4096]={0};
     int read_total = read_http_header(client, http_head, 4096);
-    printf("%s\n", http_head);
-
-    //numchars = get_line(client, buf, sizeof(buf));
     memset(&header, '\0', sizeof(header));
+    memset(&body, '\0', sizeof(body));
     parse_header(http_head, read_total, &header,&header_len, &body_len);
+    if (body_len > 0)
+    {
+    	memcpy(body.data, &http_head[header_len], body_len);
+	body.body_len  = body_len;
+	printf("body info %s\n", body.data);
+    }
     dump_header(header);
     sprintf(method, "%s", header.method);
     sprintf(url, "%s", header.path);
@@ -258,7 +273,7 @@ void accept_request(void *arg)
 	{
 	    printf("run cgi %s\n", path);
 	    int content_left = header.content_len - body_len;
-            execute_cgi(client, path, method, header.query, content_left);
+            execute_cgi(client, path, method, header.query, body, content_left);
 	}
     }
     free_header(&header);
@@ -363,8 +378,7 @@ void error_die(const char *sc)
  * Parameters: client socket descriptor
  *             path to the CGI script */
 /**********************************************************************/
-void execute_cgi(int client, const char *path,
-        const char *method, const char *query_string, int content_left)
+void execute_cgi(int client, const char *path, const char *method, const char *query_string, http_body body, int content_left)
 {
     char buf[1024];
     int cgi_output[2];
@@ -376,7 +390,7 @@ void execute_cgi(int client, const char *path,
     int numchars = 1;
     int content_length = -1;
 
-    printf("in execute cgi %s %s\n", path, query_string);
+    printf("in execute cgi %s %s %s %d\n", path, query_string, body.data, body.body_len);
     
     buf[0] = 'A'; buf[1] = '\0';
     if (strcasecmp(method, "GET") == 0)
@@ -387,22 +401,9 @@ void execute_cgi(int client, const char *path,
     {
 	if (content_left != 0)
 	{
-	
-		printf("hello query string %s\n", query_string);
-		numchars = get_line(client, buf, sizeof(buf));
-		while ((numchars > 0) && strcmp("\n", buf))
-		{
-			buf[15] = '\0';
-			if (strcasecmp(buf, "Content-Length:") == 0)
-				content_length = atoi(&(buf[16]));
-			numchars = get_line(client, buf, sizeof(buf));
-		}
-		if (content_length == -1) {
-			printf("bad request\n");
-			bad_request(client);
-			return;
-		}
 	}
+
+
     }
     else/*HEAD or other*/
     {
