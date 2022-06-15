@@ -432,7 +432,6 @@ void execute_cgi(int client, const char *path, const char *method,http_header he
 		content_left-=len;
 		printf("read = %d left = %d\n", len, content_left);
 
-
 	}
     	sprintf(buf, "HTTP/1.0 200 OK\r\nContent-Length:0\r\nConnection: close\r\n\r\n");
     	send(client, buf, strlen(buf), 0);
