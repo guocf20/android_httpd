@@ -406,7 +406,7 @@ void execute_cgi(int client, const char *path, const char *method,http_header he
     int numchars = 1;
     int content_length = -1;
 
-    printf("in execute cgi %s %s  %d %d\n", path, query_string,  body.body_len, content_left);
+    printf("in execute cgi %s %s  %d %d\n", path, header.query,  body.body_len, content_left);
     
     buf[0] = 'A'; buf[1] = '\0';
     if (strcasecmp(method, "GET") == 0)
@@ -431,7 +431,6 @@ void execute_cgi(int client, const char *path, const char *method,http_header he
 		}
 		content_left-=len;
 		printf("read = %d left = %d\n", len, content_left);
-
 
 	}
     	sprintf(buf, "HTTP/1.0 200 OK\r\nContent-Length:0\r\nConnection: close\r\n\r\n");
@@ -470,7 +469,7 @@ void execute_cgi(int client, const char *path, const char *method,http_header he
         sprintf(meth_env, "REQUEST_METHOD=%s", method);
         putenv(meth_env);
         if (strcasecmp(method, "GET") == 0) {
-            sprintf(query_env, "QUERY_STRING=%s", query_string);
+            sprintf(query_env, "QUERY_STRING=%s", header.query);
             putenv(query_env);
         }
         else {   /* POST */
