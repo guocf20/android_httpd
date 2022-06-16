@@ -4,7 +4,7 @@
  * CSE 4344 (Network concepts), Prof. Zeigler
  * University of Texas at Arlington
  */
-
+#define _GNU_SOURCE
 #include <stdio.h>
 #include <sys/socket.h>
 #include <sys/types.h>
@@ -145,8 +145,8 @@ parse_left:
 
 					printf( "this i content info = %s\n", &str[strlen("Content-Type") + 1]);
 					char *boundary_begin = strstr(&str[strlen("Content-Type") + 1],"boundary=");
-					char *boundary_value =strdup(boundary_begin+strlen("boundary="));
-					printf("boundary %s\n", boundary_value);
+					entry->boundary =strdup(boundary_begin+strlen("boundary="));
+					printf("boundary %s\n", entry->boundary);
 				}
 			}
 			ptr = key_value_ptr + 2;
@@ -388,6 +388,17 @@ void error_die(const char *sc)
     exit(1);
 }
 
+
+void delchar( char *str, char c ){
+char *p = str;
+while (*p) {
+if (*p != c)
+*str ++ = *p;
+p ++;
+    }
+*str = '\0';
+}
+
 /**********************************************************************/
 /* Execute a CGI script.  Will need to set environment variables as
  * appropriate.
@@ -406,7 +417,7 @@ void execute_cgi(int client, const char *path, const char *method,http_header he
     int numchars = 1;
     int content_length = -1;
 
-    printf("in execute cgi %s %s  %d %d\n", path, query_string,  body.body_len, content_left);
+    printf("in execute cgi %s %s  %d %d\n", path, header.query,  body.body_len, content_left);
     
     buf[0] = 'A'; buf[1] = '\0';
     if (strcasecmp(method, "GET") == 0)
@@ -415,12 +426,38 @@ void execute_cgi(int client, const char *path, const char *method,http_header he
     }
     else if (strcasecmp(method, "POST") == 0) /*POST*/
     {
-	if (content_left != 0)
-	{
-	}
-
+	uint8_t *ptr = &body.data[content_left - 1];
 	int len = 0;
 	uint8_t tmpbuf[1024]={0};
+	if (content_left == 0)
+	{
+
+		char *filename = memmem(body.data, body.body_len , "filename=", strlen("filename="));
+		char *lineend = strstr(filename, "\r\n");
+		char *tmp = memmem(body.data, body.body_len, "\r\n\r\n", 4);
+
+		if (tmp != NULL)
+		{
+		   char *file = strndup(filename + strlen("filename="), lineend - (filename + strlen("filename=")) + 1);
+		   int len = lineend- (filename + strlen("filename="));
+		   printf("file len = %d\n", len);
+		   file[lineend - (filename + strlen("filename=")) -1 ] = '\0'; 
+		   printf("file = %s\n", file);
+		   
+		    char end_bound[256] = {0};
+		    snprintf(end_bound, 255, "\r\n--%s", header.boundary);
+		    char *boundary = memmem(tmp,  body.body_len - (tmp - (char *)body.data), end_bound, strlen(end_bound));
+		    char path[256] = {0};
+		    snprintf(path, 255, "htdocs/download/%s", file);
+		    delchar(path, '"');
+		    free(file);
+		   FILE *fp = fopen(path, "a+");
+		    fwrite(tmp + 4, 1, (boundary - (tmp +4)),fp);
+		    fclose(fp);
+		}
+
+
+	}
 	while (content_left > 0)
 	{
 		len = read(client, tmpbuf, 1024);
@@ -430,9 +467,27 @@ void execute_cgi(int client, const char *path, const char *method,http_header he
 			break;
 		}
 		content_left-=len;
+		if (len + body.body_len < sizeof(body.data ))
+		{
+			memcpy(ptr, tmpbuf, len);
+			body.body_len +=len;
+			ptr += len;
+		}
+		else
+		{
+			char *tmp = memmem(ptr, body.body_len, "\r\n\r\n", 4);
+			if (tmp != NULL)
+			{
+				printf("this is end of data\n");
+			}
+
+		}
+		
+
 		printf("read = %d left = %d\n", len, content_left);
 
 	}
+
     	sprintf(buf, "HTTP/1.0 200 OK\r\nContent-Length:0\r\nConnection: close\r\n\r\n");
     	send(client, buf, strlen(buf), 0);
 
@@ -469,7 +524,7 @@ void execute_cgi(int client, const char *path, const char *method,http_header he
         sprintf(meth_env, "REQUEST_METHOD=%s", method);
         putenv(meth_env);
         if (strcasecmp(method, "GET") == 0) {
-            sprintf(query_env, "QUERY_STRING=%s", query_string);
+            sprintf(query_env, "QUERY_STRING=%s", header.query);
             putenv(query_env);
         }
         else {   /* POST */
