@@ -72,8 +72,6 @@ extern int logger;
 
 
 
-
-
 int  parse_header(const char* line, int line_len, http_header *entry, int *header_len, int *body_len)
 {
 	const char *ptr = line;
@@ -155,6 +153,7 @@ parse_left:
 				ptr+=2;
 				break;
 			}
+			free(str);
 		}
 		else
 		{
@@ -204,8 +203,65 @@ void free_header(http_header *h)
                free(h->query);
 	       h->query = NULL;
         }
+	if (h->boundary)
+	{
+		free(h->boundary);
+		h->boundary;
+	}
 }
 
+
+#define NON_NUM '0'
+
+
+int hex2num(char c)
+{
+    if (c>='0' && c<='9') return c - '0';
+    if (c>='a' && c<='z') return c - 'a' + 10;//这里+10的原因是:比如16进制的a值为10
+    if (c>='A' && c<='Z') return c - 'A' + 10;
+
+    printf("unexpected char: %c", c);
+    return NON_NUM;
+}
+
+int URLDecode(const char* str, const int strSize, char* result, const int resultSize)
+{
+    char ch,ch1,ch2;
+    int i;
+    int j = 0;//record result index
+
+
+    if ((str==NULL) || (result==NULL) || (strSize<=0) || (resultSize<=0)) {
+        return 0;
+    }
+
+
+    for ( i=0; (i<strSize) && (j<resultSize); ++i) {
+        ch = str[i];
+        switch (ch) {
+            case '+':
+                result[j++] = ' ';
+                break;
+            case '%':
+                if (i+2<strSize) {
+                    ch1 = hex2num(str[i+1]);//高4位
+                    ch2 = hex2num(str[i+2]);//低4位
+                    if ((ch1!=NON_NUM) && (ch2!=NON_NUM))
+                        result[j++] = (char)((ch1<<4) | ch2);
+                    i += 2;
+                    break;
+                } else {
+                    break;
+                }
+            default:
+                result[j++] = ch;
+                break;
+        }
+    }
+
+    result[j] = 0;
+    return j;
+}
 
 /**********************************************************************/
 /* A request has caused a call to accept() on the server port to
@@ -249,13 +305,20 @@ void accept_request(void *arg)
     dump_header(header);
     sprintf(method, "%s", header.method);
     sprintf(url, "%s", header.path);
+
+    char decode_path[256] = {0};
+    URLDecode(header.path, strlen(header.path), decode_path, 256);
+    printf("utf8 = %s\n", decode_path);
+
+
     if (header.query || strcmp(header.method,"POST") == 0)
     {
 	cgi = 1;
     }
 
 
-    sprintf(path, "htdocs%s", url);
+    //sprintf(path, "htdocs%s", url);
+    sprintf(path, "htdocs%s", decode_path);
     if (path[strlen(path) - 1] == '/' && strlen(url) == 1)
         strcat(path, "index.html");
 
@@ -496,6 +559,7 @@ void execute_cgi(int client, const char *path, const char *method,http_header he
 		    snprintf(path, 255, "htdocs/download/%s", file);
 		    delchar(path, '"');
 		    free(file);
+		    remove(path);
 		    fp = fopen(path, "a+");
 		    uint8_t *begin = tmp + 4;
 		    if (finish == 1)
@@ -516,13 +580,29 @@ void execute_cgi(int client, const char *path, const char *method,http_header he
 		    memset(body.data, '\0', sizeof(body.data));
 	    }
 
-
+	    //100 mean max boundary
+	    uint8_t write_buf[sizeof(body.data) + 100] = {0};
 	    while (finish != 1)
 	    {
 		    finish = read_body(client, &body);
 		    printf("middle len = %d %d\n", body.body_len, body.content_left);
 		    uint8_t *ptr = body.data;
 		    uint8_t *boundry = memmem(body.data, body.body_len, end_bound, strlen(end_bound));
+			//left less than boundary
+		    if(body.content_left  < strlen(end_bound))
+		    {
+			memcpy(write_buf, body.data, body.body_len);
+			read(client, write_buf+body.body_len, body.content_left);
+			uint8_t *boundary = memmem(write_buf, body.body_len, end_bound, strlen(end_bound));
+			if (boundary != NULL)
+			{
+				fwrite(write_buf, 1, boundary - write_buf, fp);
+			}
+			finish = 1;
+			break;
+
+		    }
+
 		   if (boundry != NULL)
 		   {
 
@@ -730,12 +810,19 @@ void headers(int client, const char *filename)
     send(client, buf, strlen(buf), 0);
 
     printf("filename = %s\n", filename);
-    if (strstr(filename, ".jpg") != NULL)
+    if (strcasestr(filename, ".jpg") != NULL)
     {
 	    log_info(logger, "this is pic\n");
 	    sprintf(buf, "Content-Type: image/jpeg\r\n");
     }
-    else if (strstr(filename, ".webp") != NULL)
+
+    else if  (strcasestr(filename, ".png") != NULL)
+    {
+	    log_info(logger, "this is pic\n");
+	    sprintf(buf, "Content-Type: image/png\r\n");
+    }
+
+    else if (strcasestr(filename, ".webp") != NULL)
     {
 	    sprintf(buf, "Content-Type: image/webp\r\n");
     }

@@ -44,7 +44,8 @@ function attrdir (path)
     end
 end
 
-header=string.format("<html><head><title>Index of %s</title></head><body><h1>Index of %s</h1>", string.sub(arg[1], 7), string.sub(arg[1], 7))
+--header=string.format("<html><head><title>Index of %s</title></head><body><h1>Index of %s</h1>", string.sub(arg[1], 7), string.sub(arg[1], 7))
+header=string.format("<html><head><title>Index of %s</title><meta http-equiv=\"Content-Type\" content=\"text/html; charset=utf-8\"></head><body><h1>Index of %s</h1>", string.sub(arg[1], 7), string.sub(arg[1], 7))
 print(header)
 print(" <table>")
 tmp  = dirname(arg[1])
