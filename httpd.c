@@ -142,8 +142,11 @@ parse_left:
 
 					printf( "this i content info = %s\n", &str[strlen("Content-Type") + 1]);
 					char *boundary_begin = strstr(&str[strlen("Content-Type") + 1],"boundary=");
+					if (boundary_begin != NULL)
+					{
 					entry->boundary =strdup(boundary_begin+strlen("boundary="));
 					printf("boundary %s\n", entry->boundary);
+					}
 				}
 			}
 			ptr = key_value_ptr + 2;
@@ -543,6 +546,10 @@ void execute_cgi(int client, const char *path, const char *method,http_header he
 	    int total = 0;
 	    int finish = read_body(client, &body);
 	    char *filename = memmem(body.data, body.body_len , "filename=", strlen("filename="));
+	    if (filename == NULL)
+	    {
+		    goto cgi_run;
+	    }
 	    char *lineend = strstr(filename, "\r\n");
 	    char *tmp = memmem(body.data, body.body_len, "\r\n\r\n", 4);
 
@@ -635,6 +642,8 @@ void execute_cgi(int client, const char *path, const char *method,http_header he
     else/*HEAD or other*/
     {
     }
+
+cgi_run:
 
 
     if (pipe(cgi_output) < 0) {
