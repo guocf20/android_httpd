@@ -22,8 +22,6 @@ void log_init(char *filename, int level)
 
     logger = level;
    logger_fd = fopen(filename, "a+");
-    int pthread_create(pthread_t *thread, const pthread_attr_t *attr,
-                          void *(*start_routine) (void *), void *arg);
 
    pthread_t log_thread;
     pthread_create(&log_thread, NULL, log_flush, NULL);

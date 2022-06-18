@@ -65,6 +65,7 @@ void not_found(int);
 void serve_file(int, const char *);
 int startup(short *);
 void unimplemented(int);
+int read_http_header(int sock, char *buf, int buf_size);
 
 extern FILE *logger_fd;
 extern int logger;
@@ -76,7 +77,6 @@ int  parse_header(const char* line, int line_len, http_header *entry, int *heade
 {
 	const char *ptr = line;
 	const char *key_value_ptr = NULL;
-	const char *header_end = NULL;
         if (line == NULL)
         {
                 return 1;
@@ -209,7 +209,7 @@ void free_header(http_header *h)
 	if (h->boundary)
 	{
 		free(h->boundary);
-		h->boundary;
+		h->boundary = NULL;
 	}
 }
 
@@ -276,8 +276,6 @@ void accept_request(void *arg)
     int *int_ptr = (int *)arg;
 
     int client = *int_ptr;
-    char buf[1024];
-    size_t numchars = 0; 
     char method[255] = {0};
     char url[255];
     char path[512];
@@ -354,7 +352,6 @@ void accept_request(void *arg)
 	else
 	{
 	    printf("run cgi %s\n", path);
-	    int content_left = header.content_len - body_len;
             execute_cgi(client, path, method, header, body);
 	}
     }
@@ -523,7 +520,6 @@ void execute_cgi(int client, const char *path, const char *method,http_header he
     int status;
     int i;
     char c;
-    int numchars = 1;
     int content_length = -1;
 
     char end_bound[256] = {0};
@@ -561,14 +557,13 @@ void execute_cgi(int client, const char *path, const char *method,http_header he
 		    file[lineend - (filename + strlen("filename=")) -1 ] = '\0'; 
 		    printf("file = %s\n", file);
 
-		    char *boundary = memmem(tmp,  body.body_len - (tmp - (char *)body.data), end_bound, strlen(end_bound));
 		    char path[256] = {0};
 		    snprintf(path, 255, "htdocs/download/%s", file);
 		    delchar(path, '"');
 		    free(file);
 		    remove(path);
 		    fp = fopen(path, "a+");
-		    uint8_t *begin = tmp + 4;
+		    uint8_t *begin = (uint8_t *)tmp + 4;
 		    if (finish == 1)
 		    {
 
@@ -596,7 +591,7 @@ void execute_cgi(int client, const char *path, const char *method,http_header he
 		    uint8_t *ptr = body.data;
 		    uint8_t *boundry = memmem(body.data, body.body_len, end_bound, strlen(end_bound));
 			//left less than boundary
-		    if(body.content_left  < strlen(end_bound))
+		    if(body.content_left  < (int)strlen(end_bound))
 		    {
 			memcpy(write_buf, body.data, body.body_len);
 			read(client, write_buf+body.body_len, body.content_left);
@@ -723,7 +718,6 @@ int read_http_header(int sock, char *buf, int buf_size)
 	//avoid \r\n\r\n
 	char *ptr = buf ;
 	int size = 0;
-	int http_header_end = 0;
 	int total_read = 0;
 	read(sock, ptr, 4);
 	total_read +=4;
