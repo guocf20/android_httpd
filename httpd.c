@@ -295,7 +295,12 @@ void accept_request(void *arg)
     int read_total = read_http_header(client, http_head, 4096);
     memset(&header, '\0', sizeof(header));
     memset(&body, '\0', sizeof(body));
-    parse_header(http_head, read_total, &header,&header_len, &body_len);
+    int ret = parse_header(http_head, read_total, &header,&header_len, &body_len);
+    if (ret != 0)
+    {
+	    printf("bad http header\n");
+	    return;
+    }
     if (body_len > 0)
     {
     	memcpy(body.data, &http_head[header_len], body_len);
@@ -631,6 +636,7 @@ void execute_cgi(int client, const char *path, const char *method,http_header he
 		
     	sprintf(buf, "HTTP/1.0 200 OK\r\nContent-Length:0\r\nConnection: close\r\n\r\n");
     	send(client, buf, strlen(buf), 0);
+	return ;
 
 
     }
@@ -726,7 +732,8 @@ int read_http_header(int sock, char *buf, int buf_size)
 	while ( (size = read(sock, ptr, 1024) ) > 0 && (ptr-buf) < buf_size  )
 	{
 		total_read +=size;
-		if (strstr( (ptr), "\r\n\r\n")!= NULL)
+		//if (strstr( (ptr), "\r\n\r\n")!= NULL)
+		if (memmem(ptr, size, "\r\n\r\n", 4) != NULL)
 		{
 
 			break;
@@ -1035,7 +1042,6 @@ int main(void)
     server_sock = startup(&port);
     log_err(logger, "httpd running on port %d\n", port);
     
-
     while (1)
     {
         client_sock = accept(server_sock,
@@ -1048,8 +1054,11 @@ int main(void)
 	}
         //accept_request(client_sock); 
         if (pthread_create(&newthread , NULL, (void *)accept_request, (void *)&client_sock) != 0)
+	{
             perror("pthread_create");
-
+	    close(client_sock);
+	    continue;
+	}
 	pthread_detach(newthread);
     }
 
