@@ -41,8 +41,7 @@ typedef struct http_body_
 {
 	uint8_t data[4096];
 	int body_len;
-	int body_writed;
-	int body_offset;
+	int content_left;
 }http_body;
 
 typedef struct http_header_
@@ -59,7 +58,7 @@ void bad_request(int);
 void cat(int, FILE *);
 void cannot_execute(int);
 void error_die(const char *);
-void execute_cgi(int, const char *, const char *, http_header header, http_body body, int conent_left);
+void execute_cgi(int, const char *, const char *, http_header header, http_body body);
 int get_line(int, char *, int);
 void headers(int, const char *);
 void not_found(int);
@@ -244,7 +243,8 @@ void accept_request(void *arg)
     {
     	memcpy(body.data, &http_head[header_len], body_len);
 	body.body_len  = body_len;
-	printf("body info %s\n", body.data);
+	body.content_left = header.content_len - body_len;
+	printf("body info %s an body_len = %d\n", body.data, body.body_len);
     }
     dump_header(header);
     sprintf(method, "%s", header.method);
@@ -289,7 +289,7 @@ void accept_request(void *arg)
 	{
 	    printf("run cgi %s\n", path);
 	    int content_left = header.content_len - body_len;
-            execute_cgi(client, path, method, header, body, content_left);
+            execute_cgi(client, path, method, header, body);
 	}
     }
     free_header(&header);
@@ -399,13 +399,56 @@ p ++;
 *str = '\0';
 }
 
+
+int read_body(int client, http_body *body)
+{
+	int finish = 0;
+	uint8_t *ptr = &body->data[body->body_len];
+
+
+	if (body->content_left == 0)
+	{
+		return 1;
+	}
+
+
+	if (body->body_len == sizeof(body->data))
+	{
+		return body->body_len;
+	}
+	uint8_t tmp[sizeof(body->data)] = {0};
+	
+	int left_read = sizeof(body->data) - body->body_len;
+	int len = 0;
+
+	while(left_read > 0)
+	{
+		len = read(client, tmp, min(left_read, body->content_left));
+		if (len == 0)
+		{
+			finish = 1;
+			break;
+		}
+		left_read-=len;
+		body->content_left -= len;
+		body->body_len += len;
+		memcpy(ptr, tmp, len);
+		ptr+=len;
+		
+	}
+
+	
+	return finish;
+
+}
+
 /**********************************************************************/
 /* Execute a CGI script.  Will need to set environment variables as
  * appropriate.
  * Parameters: client socket descriptor
  *             path to the CGI script */
 /**********************************************************************/
-void execute_cgi(int client, const char *path, const char *method,http_header header, http_body body, int content_left)
+void execute_cgi(int client, const char *path, const char *method,http_header header, http_body body)
 {
     char buf[1024];
     int cgi_output[2];
@@ -417,7 +460,10 @@ void execute_cgi(int client, const char *path, const char *method,http_header he
     int numchars = 1;
     int content_length = -1;
 
-    printf("in execute cgi %s %s  %d %d\n", path, header.query,  body.body_len, content_left);
+    char end_bound[256] = {0};
+    snprintf(end_bound, 255, "\r\n--%s", header.boundary);
+
+    printf("in execute cgi %s %s  %d %d\n", path, header.query,  body.body_len, body.content_left);
     
     buf[0] = 'A'; buf[1] = '\0';
     if (strcasecmp(method, "GET") == 0)
@@ -426,68 +472,81 @@ void execute_cgi(int client, const char *path, const char *method,http_header he
     }
     else if (strcasecmp(method, "POST") == 0) /*POST*/
     {
-	uint8_t *ptr = &body.data[content_left - 1];
-	int len = 0;
-	uint8_t tmpbuf[1024]={0};
-	if (content_left == 0)
-	{
+	//uint8_t *ptr = &body.data[body.body_len - 1];
+	//int len = 0;
+	//read all
+	
+	    FILE *fp = NULL;
+	    int total = 0;
+	    int finish = read_body(client, &body);
+	    char *filename = memmem(body.data, body.body_len , "filename=", strlen("filename="));
+	    char *lineend = strstr(filename, "\r\n");
+	    char *tmp = memmem(body.data, body.body_len, "\r\n\r\n", 4);
 
-		char *filename = memmem(body.data, body.body_len , "filename=", strlen("filename="));
-		char *lineend = strstr(filename, "\r\n");
-		char *tmp = memmem(body.data, body.body_len, "\r\n\r\n", 4);
+	    if (tmp != NULL)
+	    {
+		    char *file = strndup(filename + strlen("filename="), lineend - (filename + strlen("filename=")) + 1);
+		    int len = lineend- (filename + strlen("filename="));
+		    printf("file len = %d\n", len);
+		    file[lineend - (filename + strlen("filename=")) -1 ] = '\0'; 
+		    printf("file = %s\n", file);
 
-		if (tmp != NULL)
-		{
-		   char *file = strndup(filename + strlen("filename="), lineend - (filename + strlen("filename=")) + 1);
-		   int len = lineend- (filename + strlen("filename="));
-		   printf("file len = %d\n", len);
-		   file[lineend - (filename + strlen("filename=")) -1 ] = '\0'; 
-		   printf("file = %s\n", file);
-		   
-		    char end_bound[256] = {0};
-		    snprintf(end_bound, 255, "\r\n--%s", header.boundary);
 		    char *boundary = memmem(tmp,  body.body_len - (tmp - (char *)body.data), end_bound, strlen(end_bound));
 		    char path[256] = {0};
 		    snprintf(path, 255, "htdocs/download/%s", file);
 		    delchar(path, '"');
 		    free(file);
-		   FILE *fp = fopen(path, "a+");
-		    fwrite(tmp + 4, 1, (boundary - (tmp +4)),fp);
+		    fp = fopen(path, "a+");
+		    uint8_t *begin = tmp + 4;
+		    if (finish == 1)
+		    {
+
+		   	    uint8_t *boundry = memmem(body.data, body.body_len, end_bound, strlen(end_bound));
+			    printf("this is finish\n");
+			    fwrite(begin, 1, boundry - begin, fp);
+		    }
+		    else
+		    {
+
+		    	    printf("first write = %d\n", body.body_len - (begin - body.data));
+		            fwrite(begin, 1, body.body_len - (begin - body.data),fp);
+		    	    total += (begin - body.data);
+		    }
+		    body.body_len = 0;
+		    memset(body.data, '\0', sizeof(body.data));
+	    }
+
+
+	    while (finish != 1)
+	    {
+		    finish = read_body(client, &body);
+		    printf("middle len = %d %d\n", body.body_len, body.content_left);
+		    uint8_t *ptr = body.data;
+		    uint8_t *boundry = memmem(body.data, body.body_len, end_bound, strlen(end_bound));
+		   if (boundry != NULL)
+		   {
+
+			   fwrite(body.data, 1, boundry-ptr, fp);
+			   total+=(boundry-ptr);
+			   printf("this is end buf\n");
+		   }
+		   else
+		   {
+			   fwrite(body.data, 1, body.body_len, fp);
+			   total+= body.body_len;
+		   }
+
+		   body.body_len = 0;
+		   memset(body.data, '\0', sizeof(body.data));
+	    }
+	    
+	    if (finish == 1)
+	    {
+		    printf("read all end %d\n", total);
 		    fclose(fp);
-		}
+	    }
 
-
-	}
-	while (content_left > 0)
-	{
-		len = read(client, tmpbuf, 1024);
-		if (len == 0 )
-		{
-			printf("read len = 0\n");
-			break;
-		}
-		content_left-=len;
-		if (len + body.body_len < sizeof(body.data ))
-		{
-			memcpy(ptr, tmpbuf, len);
-			body.body_len +=len;
-			ptr += len;
-		}
-		else
-		{
-			char *tmp = memmem(ptr, body.body_len, "\r\n\r\n", 4);
-			if (tmp != NULL)
-			{
-				printf("this is end of data\n");
-			}
-
-		}
 		
-
-		printf("read = %d left = %d\n", len, content_left);
-
-	}
-
     	sprintf(buf, "HTTP/1.0 200 OK\r\nContent-Length:0\r\nConnection: close\r\n\r\n");
     	send(client, buf, strlen(buf), 0);
 
