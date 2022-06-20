@@ -90,6 +90,8 @@ int  parse_header(const char* line, int line_len, http_header *entry, int *heade
         ptr = strchr(url, ' ');
         if (ptr == NULL)
         {
+		free(url);
+		url = NULL;
                 return 1;
         }
 
@@ -105,6 +107,8 @@ int  parse_header(const char* line, int line_len, http_header *entry, int *heade
                 const char *start_of_query = strchr(start_of_path, ' ') + 1;
                 entry->path = strndup(start_of_path, start_of_query - start_of_path + 1);
                 entry->path[start_of_query - start_of_path - 1] = '\0';
+		free(url);
+		url = NULL;
 		goto parse_left;
         }
 
@@ -115,6 +119,8 @@ int  parse_header(const char* line, int line_len, http_header *entry, int *heade
         ptr = strchr(start_of_query, ' ');
         if (ptr == NULL)
         {
+		free(url);
+		url=NULL;
                 return 1;
         }
 
