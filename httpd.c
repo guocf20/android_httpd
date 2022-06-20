@@ -75,13 +75,19 @@ extern int logger;
 
 int  parse_header(const char* line, int line_len, http_header *entry, int *header_len, int *body_len)
 {
+	
 	const char *ptr = line;
 	const char *key_value_ptr = NULL;
+
         if (line == NULL)
         {
                 return 1;
         }
-        ptr = strchr(line, ' ');
+
+	char *first_line = strstr(line, "\r\n");
+	char *url = strndup(line, first_line - line);
+	ptr = url;
+        ptr = strchr(url, ' ');
         if (ptr == NULL)
         {
                 return 1;
@@ -90,7 +96,7 @@ int  parse_header(const char* line, int line_len, http_header *entry, int *heade
         const char *start_of_path = ptr + 1;
 
         entry->method = strndup(line, start_of_path - line + 1);
-        entry->method[start_of_path - line - 1] = '\0';
+        entry->method[start_of_path - url - 1] = '\0';
 //no query string;
         ptr = strchr(start_of_path, '?');
 
@@ -592,7 +598,7 @@ void execute_cgi(int client, const char *path, const char *method,http_header he
 	    while (finish != 1)
 	    {
 		    finish = read_body(client, &body);
-		    printf("middle len = %d %d\n", body.body_len, body.content_left);
+		    //printf("middle len = %d %d\n", body.body_len, body.content_left);
 		    uint8_t *ptr = body.data;
 		    uint8_t *boundry = memmem(body.data, body.body_len, end_bound, strlen(end_bound));
 			//left less than boundary
